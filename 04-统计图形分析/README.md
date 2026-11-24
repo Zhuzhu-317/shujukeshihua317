@@ -4,6 +4,7 @@
 
 ## 阅读导航
 
+- [RAWGraphs应用源码深化分析与运行核实](#raw-deep-review)
 - [00-研究总览与阅读导航](#raw-00)
 - [01-仓库架构与源码调用链](#raw-01)
 - [02-数据导入解析与类型推断](#raw-02)
@@ -1387,3 +1388,120 @@ A 写记录单位和关系，B 写统计计算，C 写视觉变量，D 写概览
 在02对应案例原文件中记录最终作品的 A—E 分析，并链接本目录相应机制。具象图标、照片、手绘或三维处理加入后，重新核查数据尺度和标签可读性。
 
 [研究导航](README.md#raw-00) · [机制图谱](README.md#raw-03) · [实验记录](README.md#raw-08)
+
+<a id="raw-deep-review"></a>
+
+## RAWGraphs应用源码深化分析（2026-11-24）
+
+### 1. 本次核实范围与证据等级
+
+再次读取官方仓库默认分支，HEAD仍为 `48c3b2ee9ff412721a2c99c7bed38e734b3fa534`，与前文应用基准一致。本节补充该版本的调用细节与小规模运行验证，不把重复核对写成版本升级。
+
+- **源码核实**：读取应用状态、解析与规范化、宽长转换、映射、Worker、预览、导出、工程恢复及自定义图形入口。
+- **运行验证**：直接提取该提交的独立JSON规范化函数，在Node中执行三个输入输出断言；另检查图形注册数量与锁文件版本。
+- **课程方法归纳**：把上述机制转为数据整理、选图、编码与设计交付要求。
+- **尚未验证**：完整应用启动、浏览器渲染、下载文件与工程导入往返。本次不宣称完成32种图形的实际成图实验。具体统计算法仍应追踪锁定版本的core与charts实现。
+
+### 2. 从资料到图形：五步界面背后的数据契约
+
+| 阶段 | 源码输入与输出 | 课程中必须回答的问题 |
+|---|---|---|
+| 加载 | 原始输入 → 解析记录 → 带类型的数据集 | 每行代表什么对象？每列是否单一变量？ |
+| 选图 | 图形对象及其dimensions | 要表达比较、时间、分布、关系还是层级？ |
+| 映射 | 字段 → 图形维度，必要时附聚合配置 | 同一类别多条记录如何合并？ |
+| 定制 | 已映射数据＋visualOptions → DOM图形 | 色彩、尺寸、顺序是否忠实支持阅读？ |
+| 导出 | 图形节点 → SVG/位图；项目状态 → JSON | 哪个文件用于继续编辑，哪个用于复现？ |
+
+App切换图形时清空映射、恢复新图形的默认视觉选项并清空预览；字段名改变也会触发映射清理。因此“换图前后比较”需要记录映射与参数，不能默认旧配置继续生效。依据：[App状态与五步界面](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/App.js)。
+
+### 3. 导入可读不等于数据无损
+
+CSV候选分隔符按解析后首条记录的字段数评分，优先选择字段较多的候选；用户明确指定分隔符时直接使用。该启发式不能代替检查列数、表头和样本记录。JSON先解析，再由用户选定数组，经规范化成为表格记录。依据：[解析与规范化](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/hooks/useDataLoaderUtils/parser.js)、[导入状态流程](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/hooks/useDataLoader.js)。
+
+本次运行原规范化函数得到以下结果，三个断言全部通过：
+
+| 输入片段 | 实际输出 | 对基础数据集的影响 |
+|---|---|---|
+| tags为数组A、B；meta.city为上海；meta.deep为嵌套对象；missing为null | tags为字符串“A B”；meta.city保留；deep与missing不进入输出 | 数组边界、深层结构和空值语义可能丢失 |
+| 数组记录[1,A]、标量3、null | 两列记录、value为3的记录、空对象 | 输出仍可能包含空记录，须二次清理 |
+| tags数组含1、对象、null、true | 字符串“1 true” | 只拼接标量，数组中的对象与null被忽略 |
+
+这些结果只验证该函数，不等于整个导入界面已通过测试。课程数据应先在源表中完成拆分：多值标签使用关联表或一条关系一行，缺失原因单独记录，图像保存单一资源ID或路径。不要将导入后的空格字符串自动当作一个规范类别。
+
+### 4. 宽表转长表如何改变叙事单位
+
+stackData保留用户选择的一列，把其余字段逐个转成column和value。它是结构展开，不是求和。源码：[宽长转换函数](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/hooks/useDataLoaderUtils/stack.js)。
+
+例如，以“地区”为保留列：
+
+| 地区 | 2024 | 2025 |
+|---|---:|---:|
+| 甲地 | 10 | 15 |
+| 乙地 | 20 | 12 |
+
+转换后得到四条记录：
+
+| 地区 | column | value |
+|---|---|---:|
+| 甲地 | 2024 | 10 |
+| 甲地 | 2025 | 15 |
+| 乙地 | 2024 | 20 |
+| 乙地 | 2025 | 12 |
+
+这是按函数逻辑手工推演的教学表，不是公共数据或软件运行结果。转后每行代表“地区＋年份”，应明确column的年份语义，并检查类型。若原表还有单位、备注等字段，这些字段也会被展开；应先分离元数据。字段本身名为column或value时还须检查输出键冲突。
+
+手工数值核对：甲地变化为15−10＝5，乙地变化为12−20＝−8；两年汇总为30和27。前者适合讲对象变化，后者讲总体变化，叙事问题不同。需要保留各对象时，应避免只映射年份并求和而丢失地区。
+
+### 5. 字段映射既决定视觉，也决定统计口径
+
+映射配置不仅包含字段，还可能包含聚合选项。ChartDimensionCard按维度配置决定是否采用默认聚合；默认值由core提供。仅从应用源码不能判定所有图形都使用同一个求和方式。依据：[维度卡与聚合入口](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/components/DataMapping/ChartDimensionCard.js)。
+
+预览依次检查必需变量、多字段维度的最少字段数及类型匹配；失败时清空图形。通过这些检查代表满足部分接口约束，并不能证明单位、分母、分类或因果解释正确。依据：[预览验证与绘制](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/components/ChartPreview/ChartPreview.js)。
+
+课程选图可按下表检查，具体字段名仍以相应图形定义为准：
+
+| 叙事任务 | 应整理的数据关系 | 必须明确的口径 | 设计表达重点 |
+|---|---|---|---|
+| 比较 | 类别＋数值 | 求和、平均还是计数 | 统一尺度与排序 |
+| 时间变化 | 时间＋数值，可加系列 | 时间粒度、缺失与重复日期 | 连线是否意味着连续 |
+| 分布 | 多条观测＋量值 | 保留个体，说明分箱或统计摘要 | 密度、重叠与离群值 |
+| 层级 | 路径或父子关系＋权重 | 父值是否重复计入 | 面积与层级可辨认性 |
+| 流动关系 | 起点＋终点＋权重 | 同一关系的汇总与节点口径 | 连线宽度、方向与交叉 |
+| 多变量 | 同一对象的多个量值 | 单位与标准化方式 | 轴顺序和颜色语义 |
+
+这张表是课程方法归纳，不是新增基础类型学；与01的数据逻辑和02的表现形式分别记录。
+
+### 6. 映射计算与绘制为何分开
+
+constants中启用Worker。映射阶段经Comlink调用Worker，用core的chart对象生成映射结果；绘制阶段把该结果传给renderToDOM，同时应用视觉选项。视觉选项经200毫秒防抖再更新预览。依据：[Worker实现](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/worker/worker.js)、[映射调度](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/components/ChartPreviewWIthOptions/ChartPreviewWithOptions.js)、[实际渲染](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/components/ChartPreview/ChartPreview.js)。
+
+由此归纳：数据关系先确定，再调颜色和版式；调色不能修正错误聚合。大表的成本也分布于解析、映射、布局和DOM绘制，不能把Worker存在等同于任意规模都流畅。本次未进行性能测试。
+
+### 7. 导出成品与工程复现是两项交付
+
+| 导出 | 代码机制 | 适合的交付用途 |
+|---|---|---|
+| SVG | 序列化当前图形首个节点 | 后续矢量编辑与排版 |
+| PNG/JPG | SVG转Image，再绘制到Canvas | 固定尺寸预览与展示 |
+| rawgraphs | 工程状态序列化为JSON | 保存数据、映射与视觉选项 |
+
+位图Canvas采用图形节点clientWidth和clientHeight；该路径未显式提供独立的高倍分辨率参数。印刷尺寸与清晰度应通过真实导出检查。工程保存内容见App.exportProject；若之后在矢量编辑器中修改SVG，这些手工排版不会自动回写原工程。依据：[导出组件](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/components/Exporter/Exporter.js)、[工程状态保存与恢复](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/App.js)。
+
+建议课程交付同时保留源数据、字段字典、应用提交与依赖版本、映射与参数、rawgraphs工程、导出SVG及最终成品。它们分别承担数据追溯、图形复现和视觉编辑职责。
+
+### 8. 版本、联网与可复现边界的补充核实
+
+- 注册表实际列出32项图形；本次用脚本计数确认。其中日历热力图单独导入，其他31项来自主图表包。自定义图形会另行拼接进列表，不能把32当作永久上限。依据：[图形注册表](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/charts.js)、[App图形列表](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/App.js)。
+- package.json标示应用2.1.0，而package-lock.json根项目版本为2.0.1。本次实读锁文件：core为1.0.0、charts为1.1.0、calendar-heatmap为1.0.0-beta.8。不能仅凭包声明版本推断线上部署版本，也不能将独立依赖仓库HEAD直接当作安装源码。依据：[包声明](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/package.json)、[锁文件](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/package-lock.json)。
+- 上传文本通过FileReader读取，URL数据通过fetch请求，SPARQL也有独立远程入口。应区分浏览器内解析与主动请求远程数据。依据：[文件读取](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/components/DataLoader/loaders/UploadFile.js)、[URL读取](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/components/DataLoader/loaders/UrlFetch.js)、[SPARQL入口](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/components/DataLoader/loaders/SparqlFetch.js)。
+- 自定义图形具有确认流程；这属于可执行扩展的使用边界，与普通表格输入不同。这里只记录机制，不将其描述为完成安全审计。依据：[自定义图形确认](https://github.com/rawgraphs/rawgraphs-app/blob/48c3b2ee9ff412721a2c99c7bed38e734b3fa534/src/hooks/useSafeCustomCharts.js)。
+
+### 9. 回写本课程的操作顺序
+
+1. 在06的基础数据集阶段记录行粒度、字段、单位、缺失与来源，先解决多值字段和宽长结构。
+2. 在04明确统计问题、计算口径与映射，再选择和定制图形。
+3. 在03使用ISOTYPE时重新定义图符单位、重复和余量，不把普通装饰图标等同于数量编码。
+4. 用05的接近、相似、图底等原则组织阅读层次；真实案例仍归02对应类别。
+5. 对图形核对总量、类别数、时间范围、极值、单位和图例；实际操作验证后，再在原文填写结果。
+
+[返回本页阅读导航](#04-统计图形分析)
