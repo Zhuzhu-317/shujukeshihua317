@@ -35,7 +35,7 @@
 
 ## 与课程项目的关系
 
-[主题设计项目](../../05-XXX主题信息图形设计/00-项目导航/README.md)的主题分析、叙事和视觉编码可引用本目录；[案例类型索引](../../02-信息图形类型案例/00-案例索引/README.md)与[ISOTYPE基础设计方式](../../02-信息图形类型案例/标签-ISOTYPE基础设计方式/README.md)提供作品与方法关联。
+[主题设计项目](../../06-XXX主题信息图形设计/00-项目导航/README.md)的主题分析、叙事和视觉编码可引用本目录；[案例类型索引](../../02-信息图形类型案例/00-案例索引/README.md)与[ISOTYPE基础设计方式](../../03-ISOTYPE信息图/00-ISOTYPE概念与方法.md)提供作品与方法关联。
 
 [经典原文译本](https://psychclassics.yorku.ca/Wertheimer/Forms/forms.htm) · [共同区域原始论文](https://www.sciencedirect.com/science/article/pii/001002859290014S) · [均匀连通性原始论文](https://link.springer.com/content/pdf/10.3758/BF03200760.pdf)
 
